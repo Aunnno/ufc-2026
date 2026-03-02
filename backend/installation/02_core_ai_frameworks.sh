@@ -16,9 +16,9 @@ print_section "安装 PyTorch 家族..."
 
 if [ "$ARCH" = "aarch64" ]; then
     print_warning "在 aarch64 上强制从官方下载编译好的 CPU 版本 Wheel，避免几十小时代码编译..."
-    "$VENV_PYTHON" -m pip install --use-aria2 torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+    "$VENV_PYTHON" -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 else
-    "$VENV_PYTHON" -m pip install --use-aria2 torch torchaudio
+    "$VENV_PYTHON" -m pip install torch torchaudio
 fi
 print_success "PyTorch 家族安装完成。"
 
@@ -28,13 +28,13 @@ print_success "PyTorch 家族安装完成。"
 print_section "安装 Numpy 与 OpenCV..."
 
 # 显式指定 numpy >= 2 避免与旧包冲突
-"$VENV_PYTHON" -m pip install --use-aria2 "numpy>=2"
+"$VENV_PYTHON" -m pip install "numpy>=2"
 
 if [ "$ARCH" = "aarch64" ]; then
     print_warning "在 aarch64 上为避免依赖不兼容的 Qt 库，安装 opencv-python-headless..."
-    "$VENV_PYTHON" -m pip install --use-aria2 opencv-python-headless
+    "$VENV_PYTHON" -m pip install opencv-python-headless
 else
-    "$VENV_PYTHON" -m pip install --use-aria2 opencv-python
+    "$VENV_PYTHON" -m pip install opencv-python
 fi
 print_success "OpenCV 安装完成。"
 
@@ -68,7 +68,7 @@ fi
 echo "正在编译并安装 face_recognition (将关联下载并编译 dlib, 这个过程可能长达30分钟, 请耐心等待)..."
 
 # 安装由于网络可能中端，这里用默认 pip，遇到问题可以直接重试该脚本
-"$VENV_PYTHON" -m pip install --use-aria2 face_recognition
+"$VENV_PYTHON" -m pip install face_recognition
 
 print_success "Face Recognition 安装完成。"
 

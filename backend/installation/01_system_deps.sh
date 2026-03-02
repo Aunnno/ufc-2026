@@ -25,23 +25,11 @@ if [ "$ARCH" = "aarch64" ]; then
         sudo apt-get install -y libboost-all-dev
 
         print_success "ARM64 系统依赖安装完成。"
-
-        # 安装 aria2c 用于加速 pip 下载
-        if ! command -v aria2c >/dev/null 2>&1; then
-            echo "安装 aria2c 以加速 pip 下载..."
-            sudo apt-get install -y aria2
-        fi
     else
         print_warning "未检测到 apt 包管理器，请确保系统中已安装构建工具链及 OpenBLAS。"
     fi
 else
     print_success "当前架构 ($ARCH) 非 ARM64，系统依赖步骤跳过安全检查，默认依赖已满足。"
-fi
-
-# 安装 aria2c 用于加速 pip 下载（所有架构）
-if command -v apt-get >/dev/null 2>&1 && ! command -v aria2c >/dev/null 2>&1; then
-    echo "安装 aria2c 以加速 pip 下载..."
-    sudo apt-get install -y aria2
 fi
 
 # ==========================================

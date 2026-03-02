@@ -24,7 +24,7 @@ echo "将按单子安装以下包:"
 cat "$TMP_REQ" | sed 's/^/  - /'
 echo ""
 
-"$VENV_PYTHON" -m pip install --use-aria2 -r "$TMP_REQ"
+"$VENV_PYTHON" -m pip install -r "$TMP_REQ"
 
 print_success "常规依赖安装完成。"
 
@@ -32,7 +32,7 @@ print_success "常规依赖安装完成。"
 # psutil 处理：如果失败可以重试或提供报错
 # ==========================================
 echo "安装基础系统包..."
-"$VENV_PYTHON" -m pip install --use-aria2 "psutil>=5.9.0"
+"$VENV_PYTHON" -m pip install "psutil>=5.9.0"
 
 rm -f "$TMP_REQ"
 

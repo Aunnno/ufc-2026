@@ -20,8 +20,6 @@ VENV_DIR="$BACKEND_DIR/venv"
 # 全局环境变量
 export HF_ENDPOINT="https://hf-mirror.com"
 export PIP_NO_CACHE_DIR=1  # 在资源受限的 ARM 设备上，防止 pip 缓存撑爆磁盘
-export PIP_USE_ARIA2=1               # 启用 aria2c 加速 pip 下载
-export ARIA2C_OPTS="-x8 -s8 -k1M"    # aria2c 参数：8连接，8分片，1MB最小分片
 
 # ==========================================
 # 打印工具函数

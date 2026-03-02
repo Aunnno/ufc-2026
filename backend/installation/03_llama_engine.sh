@@ -15,7 +15,7 @@ print_warning "注意: 我们正在强制要求使用 OpenBLAS 编译，请确�
 echo "如果不开启 BLAS，离线模型的推理速度会呈断崖式下跌（慢 10 倍以上）。"
 
 CMAKE_ARGS="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS" \
-    "$VENV_PYTHON" -m pip install "llama-cpp-python[all]" --no-binary llama-cpp-python
+    "$VENV_PYTHON" -m pip install --use-aria2 "llama-cpp-python[all]" --no-binary llama-cpp-python
 
 print_success "LLaMA C++ 引擎编译并安装完成。"
 

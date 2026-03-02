@@ -16,10 +16,10 @@ WHL_FILE=$(find "$BACKEND_DIR" -maxdepth 1 -name "melotts*.whl" -o -name "melo*.
 
 if [ -n "$WHL_FILE" ]; then
     print_success "找到本地安装包: $WHL_FILE"
-    "$VENV_PYTHON" -m pip install "$WHL_FILE"
+    "$VENV_PYTHON" -m pip install --use-aria2 "$WHL_FILE"
 else
     print_warning "未找到本地 MeloTTS whl 文件，尝试从 GitHub 在线安装..."
-    "$VENV_PYTHON" -m pip install "git+https://github.com/myshell-ai/MeloTTS.git"
+    "$VENV_PYTHON" -m pip install --use-aria2 "git+https://github.com/myshell-ai/MeloTTS.git"
 fi
 
 print_success "MeloTTS 安装步骤结束。"
@@ -31,7 +31,7 @@ print_section "[5.2] Numpy 依存性灾难修复"
 print_warning "MeloTTS 极其顽固的陈旧依赖会将 Numpy 偷偷降级至 1.2x，导致我们的 OpenCV 崩溃。"
 print_warning "现在我们将强制把它抢救回 Numpy >= 2。"
 
-"$VENV_PYTHON" -m pip install "numpy>=2" --upgrade
+"$VENV_PYTHON" -m pip install --use-aria2 "numpy>=2" --upgrade
 
 print_success "Numpy 从被降级状态修复成功。"
 

@@ -38,3 +38,8 @@ ONLINE_MODEL_HOST = "https://api.deepseek.com/v1"
 # ========== 图配置 ============
 
 MAP_PATH = BACKEND_ROOT_DIR / "assets" / "newest.map.json"
+
+# ========== 数据库配置 ============
+
+USER_DATABASE_PATH = BACKEND_ROOT_DIR / "user_data.db"
+FACE_IMAGE_PATH = BACKEND_ROOT_DIR / "assets" / "face.jpg"

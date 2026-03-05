@@ -267,6 +267,150 @@ export const useApiStore = defineStore('api', () => {
   }
 
   /**
+   * Execute a single car command
+   * @param {CarAction} action - Car action to execute
+   * @param {number} commandIndex - Index of the command in the sequence (optional)
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @returns {Promise<ApiResponse>} API response with execution result
+   */
+  const executeCarCommand = async (action, commandIndex = null, carId = 'default_car') => {
+    log('Executing car command:', { action, commandIndex, carId })
+
+    return await request('/navigation/execute_command/', {
+      method: 'POST',
+      body: JSON.stringify({
+        action,
+        car_id: carId,
+        command_index: commandIndex
+      })
+    })
+  }
+
+  /**
+   * Execute multiple car commands
+   * @param {CarAction[]} actions - Array of car actions to execute
+   * @param {number} startIndex - Starting index for execution (optional, default: 0)
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @returns {Promise<ApiResponse>} API response with execution results
+   */
+  const executeCarCommands = async (actions, startIndex = 0, carId = 'default_car') => {
+    log('Executing car commands:', { actions: actions.length, startIndex, carId })
+
+    return await request('/navigation/execute_commands/', {
+      method: 'POST',
+      body: JSON.stringify({
+        actions,
+        car_id: carId,
+        start_index: startIndex
+      })
+    })
+  }
+
+  /**
+   * Verify current position
+   * @param {string} expectedDestination - Expected destination node ID
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @param {string} imageData - Base64 encoded image data (optional)
+   * @returns {Promise<ApiResponse>} API response with verification result
+   */
+  const verifyPosition = async (expectedDestination, carId = 'default_car', imageData = null) => {
+    log('Verifying position:', { expectedDestination, carId })
+
+    const requestBody = {
+      expected_destination: expectedDestination,
+      car_id: carId
+    }
+
+    if (imageData) {
+      requestBody.image_data = imageData
+    }
+
+    return await request('/navigation/verify_position/', {
+      method: 'POST',
+      body: JSON.stringify(requestBody)
+    })
+  }
+
+  /**
+   * Get navigation status
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @returns {Promise<ApiResponse>} API response with navigation status
+   */
+  const getNavigationStatus = async (carId = 'default_car') => {
+    log('Getting navigation status:', { carId })
+
+    return await request(`/navigation/status/?car_id=${encodeURIComponent(carId)}`, {
+      method: 'GET'
+    })
+  }
+
+  /**
+   * Start navigation with commands
+   * @param {CarCommandsOutput} commands - Car commands to execute
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @returns {Promise<ApiResponse>} API response with navigation start confirmation
+   */
+  const startNavigation = async (commands, carId = 'default_car') => {
+    log('Starting navigation:', { commands: commands.actions.length, carId })
+
+    return await request('/navigation/start_navigation/', {
+      method: 'POST',
+      body: JSON.stringify({
+        commands,
+        car_id: carId
+      })
+    })
+  }
+
+  /**
+   * Pause navigation
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @returns {Promise<ApiResponse>} API response with pause confirmation
+   */
+  const pauseNavigation = async (carId = 'default_car') => {
+    log('Pausing navigation:', { carId })
+
+    return await request('/navigation/pause_navigation/', {
+      method: 'POST',
+      body: JSON.stringify({
+        car_id: carId
+      })
+    })
+  }
+
+  /**
+   * Resume navigation
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @returns {Promise<ApiResponse>} API response with resume confirmation
+   */
+  const resumeNavigation = async (carId = 'default_car') => {
+    log('Resuming navigation:', { carId })
+
+    return await request('/navigation/resume_navigation/', {
+      method: 'POST',
+      body: JSON.stringify({
+        car_id: carId
+      })
+    })
+  }
+
+  /**
+   * Stop navigation
+   * @param {string} carId - Car identifier (default: "default_car")
+   * @returns {Promise<ApiResponse>} API response with stop confirmation
+   */
+  const stopNavigation = async (carId = 'default_car') => {
+    log('Stopping navigation:', { carId })
+
+    return await request('/navigation/stop_navigation/', {
+      method: 'POST',
+      body: JSON.stringify({
+        car_id: carId
+      })
+    })
+  }
+
+  /**
    * Get hospital map data
    * @returns {Promise<ApiResponse>} API response with map data (nodes and edges)
    */

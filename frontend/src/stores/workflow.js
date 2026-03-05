@@ -60,6 +60,14 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const highlightedMap = ref(null)
   const showMapOverlay = ref(false)
 
+  // Navigation control data
+  const navigationActive = ref(false)
+  const navigationPaused = ref(false)
+  const currentCommandIndex = ref(0)
+  const verificationPending = ref(false)
+  const lastVerificationResult = ref(null)
+  const showNavigationPanel = ref(false)
+
   // Message history
   const messages = ref([])
 
@@ -90,6 +98,19 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const hasCommands = computed(() => commands.value !== null)
   const hasMapData = computed(() => mapData.value !== null)
   const hasHighlightedMap = computed(() => highlightedMap.value !== null)
+
+  // Navigation control computed properties
+  const hasNavigationCommands = computed(() => commands.value !== null && commands.value.actions && commands.value.actions.length > 0)
+  const currentNavigationAction = computed(() => {
+    if (!hasNavigationCommands.value || currentCommandIndex.value < 0) return null
+    if (!commands.value.actions || currentCommandIndex.value >= commands.value.actions.length) return null
+    return commands.value.actions[currentCommandIndex.value]
+  })
+  const navigationProgress = computed(() => {
+    if (!hasNavigationCommands.value) return 0
+    const total = commands.value.actions.length
+    return total > 0 ? (currentCommandIndex.value + 1) / total : 0
+  })
 
   // Node ID → display name map (nav nodes without names fall back to ID)
   const nodeNameMap = computed(() => {
@@ -136,6 +157,14 @@ export const useWorkflowStore = defineStore('workflow', () => {
     commands.value = null
     highlightedMap.value = null
     showMapOverlay.value = false
+
+    // Navigation control reset
+    navigationActive.value = false
+    navigationPaused.value = false
+    currentCommandIndex.value = 0
+    verificationPending.value = false
+    lastVerificationResult.value = null
+    showNavigationPanel.value = false
 
     messages.value = []
 
@@ -507,6 +536,122 @@ export const useWorkflowStore = defineStore('workflow', () => {
     console.log('[Workflow] Hiding map overlay')
   }
 
+  // Navigation control methods
+  const startNavigation = () => {
+    if (!hasNavigationCommands.value) {
+      console.warn('[Workflow] Cannot start navigation: no commands available')
+      return false
+    }
+    navigationActive.value = true
+    navigationPaused.value = false
+    currentCommandIndex.value = 0
+    verificationPending.value = false
+    lastVerificationResult.value = null
+    showNavigationPanel.value = true
+    console.log('[Workflow] Navigation started with', commands.value.actions.length, 'commands')
+    return true
+  }
+
+  const executeNextCommand = async () => {
+    if (!navigationActive.value || navigationPaused.value) {
+      console.warn('[Workflow] Cannot execute command: navigation not active or paused')
+      return false
+    }
+    if (!hasNavigationCommands.value || currentCommandIndex.value >= commands.value.actions.length) {
+      console.warn('[Workflow] No more commands to execute')
+      navigationActive.value = false
+      return false
+    }
+
+    // TODO: Call API to execute command
+    console.log('[Workflow] Executing command', currentCommandIndex.value, ':', commands.value.actions[currentCommandIndex.value])
+
+    // Increment index for next command
+    currentCommandIndex.value++
+
+    // Check if navigation is complete
+    if (currentCommandIndex.value >= commands.value.actions.length) {
+      navigationActive.value = false
+      console.log('[Workflow] Navigation completed')
+    }
+
+    return true
+  }
+
+  const verifyCurrentPosition = async () => {
+    if (!navigationActive.value) {
+      console.warn('[Workflow] Cannot verify position: navigation not active')
+      return false
+    }
+
+    verificationPending.value = true
+    console.log('[Workflow] Starting position verification')
+
+    // TODO: Call API to verify position
+    // Simulate verification delay
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Simulate verification result (always success for now)
+    const verificationResult = {
+      verified: true,
+      confidence: 0.95,
+      detected_text: '模拟检测文本',
+      expected_text: '预期文本',
+      message: '位置验证成功'
+    }
+
+    lastVerificationResult.value = verificationResult
+    verificationPending.value = false
+    console.log('[Workflow] Position verification completed:', verificationResult)
+
+    return verificationResult
+  }
+
+  const pauseNavigation = () => {
+    if (!navigationActive.value) {
+      console.warn('[Workflow] Cannot pause: navigation not active')
+      return false
+    }
+    navigationPaused.value = true
+    console.log('[Workflow] Navigation paused')
+  }
+
+  const resumeNavigation = () => {
+    if (!navigationActive.value) {
+      console.warn('[Workflow] Cannot resume: navigation not active')
+      return false
+    }
+    navigationPaused.value = false
+    console.log('[Workflow] Navigation resumed')
+  }
+
+  const toggleNavigationPause = () => {
+    if (navigationPaused.value) {
+      resumeNavigation()
+    } else {
+      pauseNavigation()
+    }
+  }
+
+  const stopNavigation = () => {
+    navigationActive.value = false
+    navigationPaused.value = false
+    currentCommandIndex.value = 0
+    verificationPending.value = false
+    showNavigationPanel.value = false
+    console.log('[Workflow] Navigation stopped')
+  }
+
+  const showNavigationPanelFn = () => {
+    showNavigationPanel.value = true
+    console.log('[Workflow] Showing navigation panel')
+  }
+
+  const hideNavigationPanel = () => {
+    showNavigationPanel.value = false
+    console.log('[Workflow] Hiding navigation panel')
+  }
+
   return {
     // State
     STATE,
@@ -524,6 +669,14 @@ export const useWorkflowStore = defineStore('workflow', () => {
     highlightedMap,
     showMapOverlay,
     messages,
+
+    // Navigation state
+    navigationActive,
+    navigationPaused,
+    currentCommandIndex,
+    verificationPending,
+    lastVerificationResult,
+    showNavigationPanel,
 
     // Computed
     isIdle,
@@ -546,6 +699,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
     hasMapData,
     hasHighlightedMap,
 
+    // Navigation computed
+    hasNavigationCommands,
+    currentNavigationAction,
+    navigationProgress,
+
     // Methods
     transitionTo,
     transitionToError,
@@ -563,6 +721,17 @@ export const useWorkflowStore = defineStore('workflow', () => {
     quickStartDemo,
     showMap,
     hideMap,
-    signalTTSReady
+    signalTTSReady,
+
+    // Navigation methods
+    startNavigation,
+    executeNextCommand,
+    verifyCurrentPosition,
+    pauseNavigation,
+    resumeNavigation,
+    toggleNavigationPause,
+    stopNavigation,
+    showNavigationPanelFn,
+    hideNavigationPanel
   }
 })

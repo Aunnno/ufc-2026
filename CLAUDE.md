@@ -24,11 +24,10 @@ source venv/bin/activate  # Activate virtual environment
 # Run FastAPI server with auto-reload
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Start llama.cpp server for offline chat models (separate process)
-bash start_offline_chat_server.sh
+# Offline LLM models are preloaded at startup (no separate server needed)
 ```
 
-**Note**: `start_offline_chat_server.sh` launches a separate llama.cpp server on a different port (default 8001) for offline LLM inference. The main FastAPI server communicates with it via HTTP.
+**Note**: The offline chat model is loaded directly into memory at server startup via `offline.get_offline_chat_model()`. There is no separate llama.cpp server; all inference happens within the FastAPI process.
 
 ### Frontend Development
 ```bash
@@ -46,16 +45,16 @@ npm run preview  # Preview production build
 
 ### Model Management
 - **Offline LLM models**: Place GGUF model files in `backend/model/`. Configure paths in `backend/src/config/general.py`.
-  - Chat model: `qwen2.5-coder-1.5b-instruct-q4_k_m.gguf`
+  - Chat model: `LFM2.5-1.2B-Instruct-Q4_K_M.gguf` (current) or `qwen2.5-coder-1.5b-instruct-q4_k_m.gguf`
   - Reasoning model: `Qwen3-4B-Thinking-2507-Q4_K_M.gguf`
 - **Voice interaction models**: Sherpa-onnx models go in `backend/src/voice_interaction/models/`. The `install_deps.sh` script can extract from tar archives.
-- **Face recognition assets**: `backend/assets/face/face.png` is used for face recognition.
-- **Map data**: `backend/assets/small1.map.json` contains navigation graph data.
+- **Face recognition assets**: `backend/assets/face/face.jpg` is used for face recognition (note: .jpg not .png).
+- **Map data**: `backend/assets/newest.map.json` contains navigation graph data (updated from small1.map.json).
 
 ### Deployment
 - **Nginx configuration**: See `nginx.gcp.conf` for GCP deployment. Static files are served from `frontend/dist/` after building.
 - **Frontend static files**: Static HTML files (if present in `frontend/_page_*/`) use the planned container size (332×774.66px) for reference.
-- **Backend service**: Runs on port 8000 (FastAPI). Offline LLM server runs on port 8001 (llama.cpp).
+- **Backend service**: Runs on port 8000 (FastAPI).
 
 ## Architecture Overview
 
@@ -69,7 +68,10 @@ ufc-2026/
 │   │   ├── smart_triager/   # Multi-agent workflow for route patching
 │   │   ├── llm/             # Online/offline LLM clients
 │   │   ├── map/             # Navigation with Dijkstra pathfinding
-│   │   └── recorder/        # Face recognition and medical records
+│   │   ├── recorder/        # Face recognition and medical records
+│   │   ├── voice_interaction/ # Voice interaction models and utilities
+│   │   ├── test/            # Ad-hoc test scripts (no formal test framework)
+│   │   └── utils/           # Shared utilities
 │   ├── assets/              # Static assets (maps, face images)
 │   └── docs/                # Design documentation
 └── frontend/         # Vue 3 SPA with Vuetify 3 and Tailwind CSS v4
@@ -96,7 +98,8 @@ ufc-2026/
   5. Raw output post-processing (Pydantic model parsing)
   6. `__all__` export
 - **Pydantic Everywhere**: Request bodies, response data, LLM output schemas, and map structures all use Pydantic models
-- **LLM Clients**: Online uses DeepSeek via OpenAI-compatible client (`llm/online/client.py`); offline uses llama-cpp-python (`llm/offline/`)
+- **LLM Clients**: Online uses DeepSeek via OpenAI-compatible client (`llm/online/client.py`); offline uses llama-cpp-python (`llm/offline/`) loaded directly into memory (no separate server)
+- **Medical Advice Agent**: Recently added medical advice agent (see commit `50d548c`)
 
 ### Frontend Architecture
 - **Fixed Aspect Container Pattern**: All page-level components must use `FixedAspectContainer` component
@@ -108,11 +111,13 @@ ufc-2026/
 - **Custom Shadow System**: Enhanced Material Design 3 effects with custom shadow values
 - **Responsive Adaptation**: Smart detection of content overflow with automatic layout adjustment
 - **Tech Stack Versions**: Vue 3.5.25, Vuetify 3.12.0, Tailwind CSS v4.2.0, Vite 7.3.1, Vue Router 5.0.3
+- **Current State**: Uses mock data; backend integration pending; Pinia stores empty
 
 ### Core Data Flows
 1. **Smart Triage** (`/api/triager/get_route_patch/`): User text → `workflow.py` → Agent pipeline (condition_collector → requirement_collector → route_patcher) → patched route JSON
 2. **Face-based Medical Records** (`recorder/recoder.py`): LLM tool-calls → `IntegratedSystem` → `FaceRecognitionSystem` + `MedicalRecordSystem`
-3. **Navigation** (`map/tools.py`): `small1.map.json` loaded at module import time; Dijkstra pathfinding, tree translation for LLM consumption
+3. **Navigation** (`map/tools.py`): `newest.map.json` loaded at module import time; Dijkstra pathfinding, tree translation for LLM consumption
+4. **Voice Interaction**: Long‑press (250ms) triggers recording; audio sent to backend for speech‑to‑text; response via text‑to‑speech.
 
 ## Key Files to Read First
 
@@ -138,10 +143,11 @@ ufc-2026/
 - **Testing**: No automated test framework. Ad-hoc scripts in `backend/src/test/` (run directly with venv active). Route testing via Postman or browser.
 - **Startup Behavior**: `main.py` preloads offline chat model on startup and calls `remove_os_environ_proxies()` to prevent local API calls from being intercepted by system proxies.
 - **LLM Concurrency**: `llama-cpp-python` doesn't support concurrent calls on same `Llama` instance. Shared instances must be called sequentially; different model instances can run concurrently.
+- **Voice Interaction**: Uses Sherpa‑onnx for speech‑to‑text and MeloTTS for text‑to‑speech; models are loaded on warm‑up.
 
 ### Frontend
 - **Component Structure**: Use Vuetify components for structure/interactions, Tailwind utilities for spacing/typography/layout.
-- **Store Pattern**: Setup-store style with `defineStore` and Composition API.
+- **Store Pattern**: Setup-store style with `defineStore` and Composition API (stores currently empty).
 - **Layout Architecture**: `div#app` (100vw × 100vh, flex centered) → `div#main-display-block` (fixed aspect ratio container).
 - **Solved Issues**: Check `frontend/docs/solved_issues.md` for known problems and solutions (e.g., CSS animation vs. scrolling conflicts).
 
@@ -150,7 +156,7 @@ ufc-2026/
 - **Feature branches**: Use `feature-*` naming convention (e.g., `feature-guide-improve`).
 - **Pull requests**: Create PRs against `main`. Include a summary of changes, test plan, and any breaking changes.
 - **Commit messages**: Follow conventional commits; describe "why" rather than "what".
-- **Recent changes**: Smart triager refactoring, face recognition updates, voice interaction async conversion.
+- **Recent changes**: Smart triager refactoring, face recognition updates, voice interaction async conversion, medical advice agent addition.
 
 ## Important Constraints
 
@@ -159,14 +165,16 @@ ufc-2026/
 3. **Configuration References**: Always import paths/constants from `config/general.py`; never hardcode.
 4. **Pydantic Validation**: Always validate LLM JSON output through Pydantic models.
 5. **Voice Interaction**: Long-press threshold is 250ms; visual feedback must be provided during recording.
+6. **Offline Model Loading**: Offline models are loaded directly into the FastAPI process; no separate llama.cpp server.
 
 ## Troubleshooting
 - **Numpy version conflicts**: MeloTTS may downgrade numpy, causing opencv incompatibility. The `install_deps.sh` script automatically fixes this by reinstalling numpy>=2.
 - **Unidic dictionary issues**: If MeloTTS fails due to missing unidic, the script sets up a symlink from unidic_lite (included with MeloTTS) to the expected unidic directory.
 - **Offline model segfaults**: Ensure total token count (system + user + max_tokens) does not exceed model's `n_ctx`. Check model context window size.
-- **Face recognition failures**: Ensure `backend/assets/face/face.png` exists and is a valid image.
+- **Face recognition failures**: Ensure `backend/assets/face/face.jpg` exists and is a valid image.
 - **Frontend build errors**: Ensure using Node.js 18+ and npm 9+. Clean `node_modules` and reinstall if needed.
 - **LLM concurrency errors**: Do not make concurrent calls to the same llama-cpp-python `Llama` instance. Use sequential calls or separate instances.
+- **Voice interaction failures**: Check that Sherpa‑onnx and MeloTTS models are correctly placed in `backend/src/voice_interaction/models/`.
 
 ## Quick Reference
 

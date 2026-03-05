@@ -536,6 +536,15 @@ export const useApiStore = defineStore('api', () => {
     speechToText,
     tts,
     clearError,
+    // Navigation methods
+    executeCarCommand,
+    executeCarCommands,
+    verifyPosition,
+    getNavigationStatus,
+    startNavigation,
+    pauseNavigation,
+    resumeNavigation,
+    stopNavigation,
     reset
   }
 })

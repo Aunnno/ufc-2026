@@ -6,6 +6,7 @@ import AppTopBar from '@/components/AppTopBar.vue'
 import ConversationList from '@/components/ConversationList.vue'
 import VoiceOverlay from '@/components/VoiceOverlay.vue'
 import MapOverlay from '@/components/map/MapOverlay.vue'
+import NavigationPanel from '@/components/navigation/NavigationPanel.vue'
 import AppBottomNav from '@/components/AppBottomNav.vue'
 import { useLongPress } from '@/composables/useLongPress'
 import { useVoiceRecorder } from '@/composables/useVoiceRecorder'
@@ -45,6 +46,9 @@ watch(isListening, async (newVal, oldVal) => {
 // 工作流状态管理
 const workflowStore = useWorkflowStore()
 const apiStore = useApiStore()
+
+// 导航面板状态
+const showNavigationPanel = computed(() => workflowStore.showNavigationPanel)
 
 // 使用工作流存储的消息
 const navigationMessages = computed(() => workflowStore.messages)
@@ -278,12 +282,48 @@ const showMapButton = computed(() => {
 
 // 处理查看地图按钮点击
 const handleViewMap = () => {
-  workflowStore.showMap()
+  // 显示导航面板而非全屏地图
+  workflowStore.showNavigationPanelFn()
 }
 
 // 处理地图关闭
 const handleMapClose = () => {
   workflowStore.hideMap()
+}
+
+// 处理导航面板事件
+const handleNextCommand = async () => {
+  const success = await workflowStore.executeNextCommand()
+  if (success && workflowStore.currentNavigationAction) {
+    // 调用API执行小车指令
+    const action = workflowStore.currentNavigationAction
+    const commandIndex = workflowStore.currentCommandIndex
+    const response = await apiStore.executeCarCommand(action, commandIndex)
+    console.log('Executed car command:', response)
+  }
+}
+
+const handleVerifyPosition = async () => {
+  // 获取预期目的地（从当前指令或路径中）
+  // 这里需要根据实际情况获取预期目的地节点ID
+  // 暂时使用模拟数据
+  const expectedDestination = 'node_1'
+  const result = await workflowStore.verifyCurrentPosition()
+  console.log('Position verification result:', result)
+  // TODO: 调用实际的视觉验证API
+  // const response = await apiStore.verifyPosition(expectedDestination)
+}
+
+const handleTogglePause = (paused) => {
+  if (paused) {
+    workflowStore.pauseNavigation()
+  } else {
+    workflowStore.resumeNavigation()
+  }
+}
+
+const handleStopNavigation = () => {
+  workflowStore.stopNavigation()
 }
 
 </script>
@@ -322,6 +362,23 @@ const handleMapClose = () => {
         :visible="workflowStore.showMapOverlay"
         :highlighted-map="workflowStore.highlightedMap"
         @close="handleMapClose"
+      />
+
+      <!-- 导航控制面板 -->
+      <NavigationPanel
+        :visible="showNavigationPanel"
+        :is-active="workflowStore.navigationActive"
+        :is-paused="workflowStore.navigationPaused"
+        :current-command-index="workflowStore.currentCommandIndex"
+        :total-commands="workflowStore.commands?.actions?.length || 0"
+        :current-action="workflowStore.currentNavigationAction"
+        :last-verification-result="workflowStore.lastVerificationResult"
+        :verification-pending="workflowStore.verificationPending"
+        @close="workflowStore.hideNavigationPanel"
+        @next-command="handleNextCommand"
+        @verify-position="handleVerifyPosition"
+        @toggle-pause="handleTogglePause"
+        @stop-navigation="handleStopNavigation"
       />
     </div>
 

@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 import FixedAspectContainer from '@/components/FixedAspectContainer.vue'
 import SettingsToggle from '@/components/settings/SettingsToggle.vue'
+import SettingsInput from '@/components/settings/SettingsInput.vue'
 import SettingsSection from '@/components/settings/SettingsSection.vue'
 import SettingsItem from '@/components/settings/SettingsItem.vue'
 import { useApiStore } from '@/stores/api.js'
@@ -62,6 +63,18 @@ const requestMicrophonePermission = async () => {
           description="点击请求麦克风访问权限"
           row-class="py-3 cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors"
           @click="requestMicrophonePermission"
+        />
+      </SettingsSection>
+
+      <!-- 服务器设置 -->
+      <SettingsSection title="服务器设置">
+        <SettingsInput
+          v-model="apiStore.serverAddress"
+          icon="dns"
+          label="服务器地址"
+          placeholder="https://<ip>:9000"
+          description="后端服务器地址（无需包含 /api 路径）"
+          type="url"
         />
       </SettingsSection>
 

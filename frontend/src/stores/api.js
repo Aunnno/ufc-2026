@@ -6,7 +6,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 /**
  * Create API store
@@ -18,12 +18,57 @@ export const useApiStore = defineStore('api', () => {
   const lastRequestTime = ref(null)
 
   // Configuration
-  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
   const DEFAULT_ONLINE_MODEL = import.meta.env.VITE_DEFAULT_ONLINE_MODEL === 'true' || true
   const ENABLE_LOGGING = import.meta.env.VITE_ENABLE_LOGGING === 'true' || false
 
+  // Server address (without /api suffix)
+  const getInitialServerAddress = () => {
+    // First check localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const stored = localStorage.getItem('serverAddress')
+      if (stored !== null) return stored
+    }
+    // Then check environment variables
+    const envServerAddress = import.meta.env.VITE_SERVER_ADDRESS
+    if (envServerAddress) return envServerAddress
+    const envApiBaseUrl = import.meta.env.VITE_API_BASE_URL
+    if (envApiBaseUrl) {
+      // Remove /api suffix if present
+      let url = envApiBaseUrl.trim()
+      url = url.replace(/\/$/, '')
+      if (url.endsWith('/api')) {
+        url = url.slice(0, -4)
+      }
+      return url
+    }
+    // Default fallback
+    return 'http://localhost:8000'
+  }
+  const serverAddress = ref(getInitialServerAddress())
+  // Base URL for API requests (serverAddress + /api)
+  const baseUrl = computed(() => {
+    let addr = serverAddress.value.trim()
+    if (!addr) {
+      addr = 'http://localhost:8000'
+    }
+    // Remove trailing slash
+    addr = addr.replace(/\/$/, '')
+    // Remove /api suffix if present
+    if (addr.endsWith('/api')) {
+      addr = addr.slice(0, -4)
+    }
+    return `${addr}/api`
+  })
+
   // 在线模型开关（可由设置页面控制）
   const onlineModelEnabled = ref(DEFAULT_ONLINE_MODEL)
+
+  // Persist server address changes to localStorage
+  watch(serverAddress, (newVal) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('serverAddress', newVal)
+    }
+  })
 
   /**
    * Log debug messages if logging is enabled
@@ -45,7 +90,7 @@ export const useApiStore = defineStore('api', () => {
     error.value = null
     lastRequestTime.value = Date.now()
 
-    const url = `${BASE_URL}${endpoint}`
+    const url = `${baseUrl.value}${endpoint}`
     log(`Making request to: ${url}`, options)
 
     try {
@@ -295,7 +340,7 @@ export const useApiStore = defineStore('api', () => {
    * @returns {Promise<Blob|null>} WAV audio Blob, or null on failure
    */
   const tts = async (text) => {
-    const url = `${BASE_URL}/voice/tts?text=${encodeURIComponent(text)}`
+    const url = `${baseUrl.value}/voice/tts?text=${encodeURIComponent(text)}`
     log('TTS request:', text)
     try {
       const response = await fetch(url)
@@ -330,7 +375,8 @@ export const useApiStore = defineStore('api', () => {
     lastRequestTime,
 
     // Configuration
-    BASE_URL,
+    serverAddress,
+    baseUrl,
     DEFAULT_ONLINE_MODEL,
     onlineModelEnabled,
 

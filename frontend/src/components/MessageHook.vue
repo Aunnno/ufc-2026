@@ -4,8 +4,8 @@
       @click="onClick"
       class="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary font-medium rounded-full transition-colors"
     >
-      <span class="material-symbols-outlined text-sm">map</span>
-      <span>查看地图</span>
+      <span class="material-symbols-outlined text-sm">navigation</span>
+      <span>开始导航</span>
     </button>
   </div>
 </template>

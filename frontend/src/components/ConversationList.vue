@@ -12,14 +12,14 @@ import MessageHook from '@/components/MessageHook.vue'
  *   showMapButton (Boolean) — 是否显示地图按钮
  *
  * Events:
- *   view-map — 用户点击"查看地图"按钮时触发
+ *   view-map — 用户点击"开始导航"按钮时触发
  */
 const props = defineProps({
   messages: {
     type: Array,
     default: () => [],
   },
-  // 新增：是否显示地图按钮
+  // 新增：是否显示导航按钮
   showMapButton: {
     type: Boolean,
     default: false

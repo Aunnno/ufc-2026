@@ -563,9 +563,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
       return false
     }
 
-    // TODO: Call API to execute command
-    console.log('[Workflow] Executing command', currentCommandIndex.value, ':', commands.value.actions[currentCommandIndex.value])
-
     // Increment index for next command
     currentCommandIndex.value++
 
@@ -584,10 +581,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
       return false
     }
 
-    verificationPending.value = true
-    console.log('[Workflow] Starting position verification')
+    console.log('[Workflow] Starting simulated position verification')
 
-    // TODO: Call API to verify position
     // Simulate verification delay
     await new Promise(resolve => setTimeout(resolve, 500))
 
@@ -600,9 +595,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
       message: '位置验证成功'
     }
 
-    lastVerificationResult.value = verificationResult
-    verificationPending.value = false
-    console.log('[Workflow] Position verification completed:', verificationResult)
+    console.log('[Workflow] Simulated position verification completed:', verificationResult)
 
     return verificationResult
   }

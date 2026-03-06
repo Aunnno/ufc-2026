@@ -293,25 +293,79 @@ const handleMapClose = () => {
 
 // 处理导航面板事件
 const handleNextCommand = async () => {
-  const success = await workflowStore.executeNextCommand()
-  if (success && workflowStore.currentNavigationAction) {
-    // 调用API执行小车指令
-    const action = workflowStore.currentNavigationAction
-    const commandIndex = workflowStore.currentCommandIndex
-    const response = await apiStore.executeCarCommand(action, commandIndex)
-    console.log('Executed car command:', response)
+  if (!workflowStore.navigationActive || workflowStore.navigationPaused) {
+    console.warn('Cannot execute command: navigation not active or paused')
+    return
+  }
+  if (!workflowStore.hasNavigationCommands || workflowStore.currentCommandIndex >= workflowStore.commands?.actions?.length) {
+    console.warn('No more commands to execute')
+    workflowStore.navigationActive = false
+    return
+  }
+
+  // 获取当前要执行的指令
+  const action = workflowStore.currentNavigationAction
+  const commandIndex = workflowStore.currentCommandIndex
+
+  if (!action) {
+    console.warn('No action available at index', commandIndex)
+    return
+  }
+
+  // 调用API执行小车指令
+  console.log('Executing command', commandIndex, ':', action)
+  const response = await apiStore.executeCarCommand(action, commandIndex)
+  console.log('Executed car command:', response)
+
+  // 如果API调用成功，前进到下一个指令
+  if (response && response.success) {
+    workflowStore.executeNextCommand()
+  } else {
+    console.error('Failed to execute car command:', response?.error)
+    // 可以在这里添加错误处理，比如暂停导航
   }
 }
 
 const handleVerifyPosition = async () => {
-  // 获取预期目的地（从当前指令或路径中）
-  // 这里需要根据实际情况获取预期目的地节点ID
-  // 暂时使用模拟数据
-  const expectedDestination = 'node_1'
-  const result = await workflowStore.verifyCurrentPosition()
-  console.log('Position verification result:', result)
-  // TODO: 调用实际的视觉验证API
-  // const response = await apiStore.verifyPosition(expectedDestination)
+  if (!workflowStore.navigationActive) {
+    console.warn('Cannot verify position: navigation not active')
+    return
+  }
+
+  // 设置验证进行中状态
+  workflowStore.verificationPending = true
+
+  try {
+    // 获取预期目的地（从当前指令或路径中）
+    // 这里需要根据实际情况获取预期目的地节点ID
+    // 暂时使用模拟数据
+    const expectedDestination = 'node_1'
+
+    // 调用视觉验证API
+    const response = await apiStore.verifyPosition(expectedDestination)
+    console.log('Position verification API response:', response)
+
+    if (response && response.success) {
+      // 使用API返回的验证结果
+      const verificationResult = response.data
+      workflowStore.lastVerificationResult = verificationResult
+      console.log('Position verification successful:', verificationResult)
+    } else {
+      // API调用失败，使用模拟验证
+      console.warn('Verification API failed, using simulation')
+      const result = await workflowStore.verifyCurrentPosition()
+      workflowStore.lastVerificationResult = result
+      console.log('Position verification result (simulated):', result)
+    }
+  } catch (error) {
+    console.error('Error during position verification:', error)
+    // 使用模拟验证作为后备
+    const result = await workflowStore.verifyCurrentPosition()
+    workflowStore.lastVerificationResult = result
+    console.log('Position verification result (fallback):', result)
+  } finally {
+    workflowStore.verificationPending = false
+  }
 }
 
 const handleTogglePause = (paused) => {

@@ -87,7 +87,26 @@
               </span>
               <span>{{ isPaused ? '继续导航' : '暂停导航' }}</span>
             </button>
+
+            <!-- 上传图片验证按钮（备用方案） -->
+            <button
+              @click="handleUploadImage"
+              :disabled="isPaused"
+              class="col-span-2 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span class="material-symbols-outlined text-base">photo_camera</span>
+              <span>上传图片验证</span>
+            </button>
           </div>
+
+          <!-- 隐藏的文件输入元素 -->
+          <input
+            type="file"
+            ref="fileInput"
+            class="hidden"
+            accept="image/*"
+            @change="handleFileSelected"
+          />
 
           <!-- 状态信息 -->
           <div v-if="statusMessage" class="text-center text-sm" :class="statusMessageClass">
@@ -120,7 +139,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 // Props
 const props = defineProps({
@@ -165,6 +184,7 @@ const emit = defineEmits([
   'close',
   'next-command',
   'verify-position',
+  'verify-position-with-image',
   'toggle-pause',
   'stop-navigation'
 ])
@@ -235,6 +255,51 @@ function handleStopNavigation() {
   if (confirm('确定要停止导航吗？')) {
     emit('stop-navigation')
   }
+}
+
+// 文件上传相关
+const fileInput = ref(null)
+
+function handleUploadImage() {
+  // 触发隐藏的文件输入元素
+  if (fileInput.value) {
+    fileInput.value.click()
+  }
+}
+
+async function handleFileSelected(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    alert('请选择图片文件')
+    return
+  }
+
+  // 读取文件为base64
+  try {
+    const base64 = await readFileAsBase64(file)
+    // 发射事件，传递base64图像数据
+    emit('verify-position-with-image', base64)
+  } catch (error) {
+    console.error('Failed to read image file:', error)
+    alert('读取图片失败')
+  }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      // 移除data:image/...;base64,前缀，只保留base64数据
+      const result = reader.result
+      const base64 = result.split(',')[1] || result
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 function getActionIcon(orientation) {

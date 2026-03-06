@@ -282,8 +282,12 @@ const showMapButton = computed(() => {
 
 // 处理查看地图按钮点击
 const handleViewMap = () => {
-  // 显示导航面板而非全屏地图
-  workflowStore.showNavigationPanelFn()
+  // 开始导航并显示导航面板
+  const navigationStarted = workflowStore.startNavigation()
+  if (!navigationStarted) {
+    console.warn('Failed to start navigation: no commands available')
+    // 可以显示错误提示，暂时只记录警告
+  }
 }
 
 // 处理地图关闭
@@ -336,10 +340,15 @@ const handleVerifyPosition = async () => {
   workflowStore.verificationPending = true
 
   try {
-    // 获取预期目的地（从当前指令或路径中）
-    // 这里需要根据实际情况获取预期目的地节点ID
-    // 暂时使用模拟数据
-    const expectedDestination = 'node_1'
+    // 获取预期目的地（优先使用诊所ID，否则使用模拟节点）
+    let expectedDestination = 'node_1'
+    if (workflowStore.clinicId) {
+      expectedDestination = workflowStore.clinicId
+    } else if (workflowStore.modifiedRoute && workflowStore.modifiedRoute.length > 0) {
+      // 使用优化后路线的最后一个节点
+      const lastLink = workflowStore.modifiedRoute[workflowStore.modifiedRoute.length - 1]
+      expectedDestination = lastLink.to
+    }
 
     // 调用视觉验证API
     const response = await apiStore.verifyPosition(expectedDestination)
@@ -359,6 +368,53 @@ const handleVerifyPosition = async () => {
     }
   } catch (error) {
     console.error('Error during position verification:', error)
+    // 使用模拟验证作为后备
+    const result = await workflowStore.verifyCurrentPosition()
+    workflowStore.lastVerificationResult = result
+    console.log('Position verification result (fallback):', result)
+  } finally {
+    workflowStore.verificationPending = false
+  }
+}
+
+const handleVerifyPositionWithImage = async (imageData) => {
+  if (!workflowStore.navigationActive) {
+    console.warn('Cannot verify position: navigation not active')
+    return
+  }
+
+  // 设置验证进行中状态
+  workflowStore.verificationPending = true
+
+  try {
+    // 获取预期目的地（优先使用诊所ID，否则使用模拟节点）
+    let expectedDestination = 'node_1'
+    if (workflowStore.clinicId) {
+      expectedDestination = workflowStore.clinicId
+    } else if (workflowStore.modifiedRoute && workflowStore.modifiedRoute.length > 0) {
+      // 使用优化后路线的最后一个节点
+      const lastLink = workflowStore.modifiedRoute[workflowStore.modifiedRoute.length - 1]
+      expectedDestination = lastLink.to
+    }
+
+    // 调用视觉验证API，传入图片数据
+    const response = await apiStore.verifyPosition(expectedDestination, 'default_car', imageData)
+    console.log('Position verification with image API response:', response)
+
+    if (response && response.success) {
+      // 使用API返回的验证结果
+      const verificationResult = response.data
+      workflowStore.lastVerificationResult = verificationResult
+      console.log('Position verification with image successful:', verificationResult)
+    } else {
+      // API调用失败，使用模拟验证
+      console.warn('Verification API failed, using simulation')
+      const result = await workflowStore.verifyCurrentPosition()
+      workflowStore.lastVerificationResult = result
+      console.log('Position verification result (simulated):', result)
+    }
+  } catch (error) {
+    console.error('Error during position verification with image:', error)
     // 使用模拟验证作为后备
     const result = await workflowStore.verifyCurrentPosition()
     workflowStore.lastVerificationResult = result
@@ -431,6 +487,7 @@ const handleStopNavigation = () => {
         @close="workflowStore.hideNavigationPanel"
         @next-command="handleNextCommand"
         @verify-position="handleVerifyPosition"
+        @verify-position-with-image="handleVerifyPositionWithImage"
         @toggle-pause="handleTogglePause"
         @stop-navigation="handleStopNavigation"
       />

@@ -2,7 +2,8 @@
 Camera Capture Module
 
 This module provides camera capture functionality for visual verification.
-Currently implements mock capture for development and testing.
+Backend captures images from server-connected camera using OpenCV (cv2.VideoCapture).
+Currently implements mock capture for Phase 2 development; real camera integration planned for Phase 3+.
 """
 
 import base64

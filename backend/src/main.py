@@ -49,7 +49,7 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 允许所有来源，开发环境使用
-    allow_credentials=True,  # 允许携带认证信息
+    allow_credentials=False,  # 不需要携带认证信息（与 allow_origins=["*"] 兼容）
     allow_methods=["*"],  # 允许所有 HTTP 方法
     allow_headers=["*"],  # 允许所有请求头
     expose_headers=["*"],  # 暴露所有响应头给前端

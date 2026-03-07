@@ -6,6 +6,7 @@ import AppTopBar from '@/components/AppTopBar.vue'
 import ConversationList from '@/components/ConversationList.vue'
 import VoiceOverlay from '@/components/VoiceOverlay.vue'
 import MapOverlay from '@/components/map/MapOverlay.vue'
+import NavigationPanel from '@/components/navigation/NavigationPanel.vue'
 import AppBottomNav from '@/components/AppBottomNav.vue'
 import { useLongPress } from '@/composables/useLongPress'
 import { useVoiceRecorder } from '@/composables/useVoiceRecorder'
@@ -45,6 +46,9 @@ watch(isListening, async (newVal, oldVal) => {
 // 工作流状态管理
 const workflowStore = useWorkflowStore()
 const apiStore = useApiStore()
+
+// 导航面板状态
+const showNavigationPanel = computed(() => workflowStore.showNavigationPanel)
 
 // 使用工作流存储的消息
 const navigationMessages = computed(() => workflowStore.messages)
@@ -278,12 +282,158 @@ const showMapButton = computed(() => {
 
 // 处理查看地图按钮点击
 const handleViewMap = () => {
-  workflowStore.showMap()
+  // 开始导航并显示导航面板
+  const navigationStarted = workflowStore.startNavigation()
+  if (!navigationStarted) {
+    console.warn('Failed to start navigation: no commands available')
+    // 可以显示错误提示，暂时只记录警告
+  }
 }
 
 // 处理地图关闭
 const handleMapClose = () => {
   workflowStore.hideMap()
+}
+
+// 处理导航面板事件
+const handleNextCommand = async () => {
+  if (!workflowStore.navigationActive || workflowStore.navigationPaused) {
+    console.warn('Cannot execute command: navigation not active or paused')
+    return
+  }
+  if (!workflowStore.hasNavigationCommands || workflowStore.currentCommandIndex >= workflowStore.commands?.actions?.length) {
+    console.warn('No more commands to execute')
+    workflowStore.navigationActive = false
+    return
+  }
+
+  // 获取当前要执行的指令
+  const action = workflowStore.currentNavigationAction
+  const commandIndex = workflowStore.currentCommandIndex
+
+  if (!action) {
+    console.warn('No action available at index', commandIndex)
+    return
+  }
+
+  // 调用API执行小车指令
+  console.log('Executing command', commandIndex, ':', action)
+  const response = await apiStore.executeCarCommand(action, commandIndex)
+  console.log('Executed car command:', response)
+
+  // 如果API调用成功，前进到下一个指令
+  if (response && response.success) {
+    workflowStore.executeNextCommand()
+  } else {
+    console.error('Failed to execute car command:', response?.error)
+    // 可以在这里添加错误处理，比如暂停导航
+  }
+}
+
+const handleVerifyPosition = async () => {
+  if (!workflowStore.navigationActive) {
+    console.warn('Cannot verify position: navigation not active')
+    return
+  }
+
+  // 设置验证进行中状态
+  workflowStore.verificationPending = true
+
+  try {
+    // 获取预期目的地（优先使用诊所ID，否则使用模拟节点）
+    let expectedDestination = 'node_1'
+    if (workflowStore.clinicId) {
+      expectedDestination = workflowStore.clinicId
+    } else if (workflowStore.modifiedRoute && workflowStore.modifiedRoute.length > 0) {
+      // 使用优化后路线的最后一个节点
+      const lastLink = workflowStore.modifiedRoute[workflowStore.modifiedRoute.length - 1]
+      expectedDestination = lastLink.to
+    }
+
+    // 调用视觉验证API
+    const response = await apiStore.verifyPosition(expectedDestination)
+    console.log('Position verification API response:', response)
+
+    if (response && response.success) {
+      // 使用API返回的验证结果
+      const verificationResult = response.data
+      workflowStore.lastVerificationResult = verificationResult
+      console.log('Position verification successful:', verificationResult)
+    } else {
+      // API调用失败，使用模拟验证
+      console.warn('Verification API failed, using simulation')
+      const result = await workflowStore.verifyCurrentPosition()
+      workflowStore.lastVerificationResult = result
+      console.log('Position verification result (simulated):', result)
+    }
+  } catch (error) {
+    console.error('Error during position verification:', error)
+    // 使用模拟验证作为后备
+    const result = await workflowStore.verifyCurrentPosition()
+    workflowStore.lastVerificationResult = result
+    console.log('Position verification result (fallback):', result)
+  } finally {
+    workflowStore.verificationPending = false
+  }
+}
+
+const handleVerifyPositionWithImage = async (imageData) => {
+  if (!workflowStore.navigationActive) {
+    console.warn('Cannot verify position: navigation not active')
+    return
+  }
+
+  // 设置验证进行中状态
+  workflowStore.verificationPending = true
+
+  try {
+    // 获取预期目的地（优先使用诊所ID，否则使用模拟节点）
+    let expectedDestination = 'node_1'
+    if (workflowStore.clinicId) {
+      expectedDestination = workflowStore.clinicId
+    } else if (workflowStore.modifiedRoute && workflowStore.modifiedRoute.length > 0) {
+      // 使用优化后路线的最后一个节点
+      const lastLink = workflowStore.modifiedRoute[workflowStore.modifiedRoute.length - 1]
+      expectedDestination = lastLink.to
+    }
+
+    // 调用视觉验证API，传入图片数据
+    const response = await apiStore.verifyPosition(expectedDestination, 'default_car', imageData)
+    console.log('Position verification with image API response:', response)
+
+    if (response && response.success) {
+      // 使用API返回的验证结果
+      const verificationResult = response.data
+      workflowStore.lastVerificationResult = verificationResult
+      console.log('Position verification with image successful:', verificationResult)
+    } else {
+      // API调用失败，使用模拟验证
+      console.warn('Verification API failed, using simulation')
+      const result = await workflowStore.verifyCurrentPosition()
+      workflowStore.lastVerificationResult = result
+      console.log('Position verification result (simulated):', result)
+    }
+  } catch (error) {
+    console.error('Error during position verification with image:', error)
+    // 使用模拟验证作为后备
+    const result = await workflowStore.verifyCurrentPosition()
+    workflowStore.lastVerificationResult = result
+    console.log('Position verification result (fallback):', result)
+  } finally {
+    workflowStore.verificationPending = false
+  }
+}
+
+const handleTogglePause = (paused) => {
+  if (paused) {
+    workflowStore.pauseNavigation()
+  } else {
+    workflowStore.resumeNavigation()
+  }
+}
+
+const handleStopNavigation = () => {
+  workflowStore.stopNavigation()
 }
 
 </script>
@@ -322,6 +472,24 @@ const handleMapClose = () => {
         :visible="workflowStore.showMapOverlay"
         :highlighted-map="workflowStore.highlightedMap"
         @close="handleMapClose"
+      />
+
+      <!-- 导航控制面板 -->
+      <NavigationPanel
+        :visible="showNavigationPanel"
+        :is-active="workflowStore.navigationActive"
+        :is-paused="workflowStore.navigationPaused"
+        :current-command-index="workflowStore.currentCommandIndex"
+        :total-commands="workflowStore.commands?.actions?.length || 0"
+        :current-action="workflowStore.currentNavigationAction"
+        :last-verification-result="workflowStore.lastVerificationResult"
+        :verification-pending="workflowStore.verificationPending"
+        @close="workflowStore.hideNavigationPanel"
+        @next-command="handleNextCommand"
+        @verify-position="handleVerifyPosition"
+        @verify-position-with-image="handleVerifyPositionWithImage"
+        @toggle-pause="handleTogglePause"
+        @stop-navigation="handleStopNavigation"
       />
     </div>
 

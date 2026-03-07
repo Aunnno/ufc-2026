@@ -1,139 +1,247 @@
 """
 backend/src/medical/agent.py
-医疗智能 Agent：根据诊断结果生成病因与疗养建议（面向患者、通俗易懂）
-提供在线/离线接口（离线为简单模版回退）
+医疗智能 Agent：根据症状和诊断结果生成个性化医疗建议
+支持场景识别和模板化回复，优化边缘计算性能
 """
 
-from typing import Optional
+from typing import Optional, Tuple
+from pydantic import BaseModel
 from src.llm.online.client import get_online_client
 from src.config import general
 import json
 import asyncio
+import re
 
 
-def _build_prompt(diagnosis_text: str, patient_info: Optional[dict] = None, matched_records: Optional[list[dict]] = None) -> str:
-    """构建给 LLM 的详细 prompt，要求生成通俗易懂、面向患者的病因和疗养建议。"""
-    prompt = """
-你是临床助手，任务是将医生的诊断结果转换为面向患者、通俗易懂的文字，包含：
-
-- 简短结论（1-2句），指出诊断的核心是什么；
-- 可能的病因（2-4点），用普通话描述，避免医学专业术语或在术语后加括号说明；
-- 简单的疗养与护理建议（4-8点），包含日常生活、饮食、休息、是否需要复诊或用药指引；
-- 若有潜在严重症状（需要立即就医）请明确列出并用粗体或开头标注“立即就医：”；
-- 语言风格：友好、安抚、鼓励；长度不宜超过 400 字；
-- 输出格式：JSON 对象，包含字段 `summary`（结论）、`possible_causes`（数组）、`care_advice`（数组）、`urgent_signs`（数组，若无可空数组）。
-
-请根据下列信息生成结果：
-注意：输出要尽量个性化，如果提供了 `patient_info`（例如年龄、既往史）或 `matched_records`（患者历史病历片段），请据此调整建议：
-- 在护理建议中注明针对已有疾病/用药的注意事项（不要开具体处方剂量）；
-- 在随访建议中给出大致时间范围（例如“3-7天复诊或若症状加重立刻就医”）；
-- 在生活方式建议中给出具体可执行动作（例如“每天睡眠保证7-8小时”，“避免剧烈运动直到症状缓解”）；
-- 在每条建议后可选提供一句简短的理由（为什么这样做有帮助）。
-"""
-
-    prompt += f"\n诊断结果文本：\n{diagnosis_text}\n"
-
-    if patient_info:
-        prompt += "\n患者信息（可选）：\n" + json.dumps(patient_info, ensure_ascii=False) + "\n"
-
-    if matched_records:
-        # 提供部分历史病历片段供模型参考，但限制长度以防超长
-        brief_records = matched_records if len(json.dumps(matched_records, ensure_ascii=False)) < 2000 else matched_records[-5:]
-        prompt += "\n匹配到的历史病历片段（可选，用于个性化建议）：\n" + json.dumps(brief_records, ensure_ascii=False) + "\n"
-
-    prompt += "\n请严格返回合法的 JSON（不要输出额外说明文本）。"
-
-    return prompt
+class MedicalResponse(BaseModel):
+    """医疗响应数据模型"""
+    response: str
+    scenario: str
+    requires_doctor_consultation: bool = False
 
 
-def generate_patient_advice(diagnosis_text: str, patient_info: Optional[dict] = None, online_model: bool = True, matched_records: Optional[list[dict]] = None) -> dict:
-    """主接口：同步接口，内部对在线模型调用做阻塞/线程切换处理。
-    - online_model=True: 使用 DeepSeek/OpenAI 风格在线模型
-    - online_model=False: 使用简单模版回退
-    返回解析后的 dict 或包含 error 字段的 dict
+def _identify_scenario(symptoms: str, diagnosis: str) -> Tuple[str, bool]:
     """
-    if online_model:
-        try:
-            client = get_online_client()
-            # 使用简单的 chat completion 调用
-            prompt = _build_prompt(diagnosis_text, patient_info, matched_records)
-            # 以同步方式调用（外层 router 会在线程池中调用此函数）
-            response = asyncio.run(
-                client.chat.completions.create(
-                    model=general.ONLINE_CHAT_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.2,
-                    max_tokens=800,
-                )
-            )
+    识别场景类型和安全边界检查
+    返回：(场景类型, 是否需要医生咨询)
+    """
+    # 关键词定义
+    medication_keywords = ["服药", "用药", "剂量", "一次", "两次", "三次", "吃药", "药量"]
+    dangerous_keywords = ["改剂量", "减量", "增量", "停药", "自行调整", "减少用药", "增加用药"]
+    
+    text = f"{symptoms} {diagnosis}".lower()
+    
+    # 检查是否需要医生咨询（安全边界）
+    requires_doctor = any(keyword in text for keyword in dangerous_keywords)
+    
+    # 场景识别
+    if any(keyword in text for keyword in medication_keywords):
+        scenario = "medication_consultation"
+    elif "疗养" in text or "恢复" in text or "休养" in text:
+        scenario = "recovery_advice"
+    elif "症状" in text or "诊断" in text:
+        scenario = "symptom_interpretation"
+    else:
+        scenario = "general_advice"
+    
+    return scenario, requires_doctor
 
-            # 提取文本内容
-            assistant = response.choices[0].message
-            content = assistant.content or ""
 
-            # 尝试 parse JSON
-            try:
-                parsed = json.loads(content)
-                return {"success": True, "data": parsed}
-            except Exception:
-                # 如果返回不是 JSON，则尝试从文本中抽取最后一个 JSON 对象
-                last_brace = content.rfind("{")
-                if last_brace != -1:
-                    maybe = content[last_brace:]
-                    try:
-                        parsed = json.loads(maybe)
-                        return {"success": True, "data": parsed}
-                    except Exception:
-                        pass
-
-                return {"success": False, "error": "无法解析模型返回内容为 JSON", "raw": content}
-
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    # 离线或回退实现：基于模板返回更个性化的建议（使用 patient_info 和 matched_records）
-    summary = diagnosis_text.split("。")[0] if diagnosis_text else "未提供诊断结果"
-    possible_causes = ["常见原因：病毒或细菌感染，过敏反应，环境刺激等。请在门诊由医生进一步鉴别。"]
-
-    # 个性化护理建议，尽量给出具体可执行项与简短理由
-    care_advice = []
-    if patient_info and isinstance(patient_info, dict):
-        age = patient_info.get("age") or patient_info.get("年龄")
-        if age and isinstance(age, int) and age >= 65:
-            care_advice.append({"advice": "老年人建议更密切观察体温与呼吸情况，避免脱水与电解质紊乱。", "reason": "老年人免疫力较弱并发症风险更高"})
-
-    care_advice.extend([
-        {"advice": "保证充足休息，卧床或减少外出直至症状明显好转。", "reason": "促进免疫恢复，减少传播"},
-        {"advice": "保持室内空气流通，避免烟雾与刺激性气体。", "reason": "减少对气道的刺激，缓解咳嗽"},
-        {"advice": "多饮水、清淡饮食，避免咖啡因与酒精。", "reason": "帮助稀释痰液与维持体液平衡"},
-        {"advice": "按医生建议使用对症药物（如退热、止咳剂），不要自行组合处方药。", "reason": "避免药物相互作用与副作用"},
-    ])
-
-    # 如果历史病历提示有慢性病或长期用药，添加注意事项
-    if matched_records:
-        care_advice.append({"advice": "根据既往病历，注意与既往用药的相互作用并向主治医师说明最近用药史。", "reason": "防止不良药物相互作用"})
-
-    urgent_signs = ["呼吸困难", "持续高热不退（>38.5°C，多日）", "胸痛或意识改变"]
-
-    follow_up = ["若48-72小时症状无改善请复诊","若出现急性呼吸困难或高热请立即就医"]
-
-    suggested_questions = [
-        "我的症状可能的病因是什么？需要做哪些检查？",
-        "我是否需要使用抗生素或其他处方药？何时应开始用药？",
-        "需要何时复诊或做进一步检查？"
+def _extract_medication_info(text: str) -> dict:
+    """提取用药相关信息"""
+    info = {}
+    
+    # 匹配用药频率
+    freq_patterns = [
+        r"一天\s*(\d+)\s*次",
+        r"每日\s*(\d+)\s*次",
+        r"(\d+)\s*次\s*每天",
+        r"(\d+)\s*次/天"
     ]
+    
+    for pattern in freq_patterns:
+        match = re.search(pattern, text)
+        if match:
+            info["frequency"] = int(match.group(1))
+            break
+    
+    # 简单药物识别（常见药物关键词）
+    med_keywords = ["抗生素", "消炎药", "退烧药", "止痛药", "感冒药", "止咳药"]
+    for keyword in med_keywords:
+        if keyword in text:
+            info["medication"] = keyword
+            break
+    
+    return info
 
-    return {
-        "success": True,
-        "data": {
-            "summary": summary,
-            "possible_causes": possible_causes,
-            "care_advice": care_advice,
-            "urgent_signs": urgent_signs,
-            "follow_up": follow_up,
-            "suggested_questions_for_doctor": suggested_questions,
-        },
-    }
+
+def _generate_template_response(scenario: str, symptoms: str, diagnosis: str, requires_doctor: bool) -> str:
+    """生成模板化回复"""
+    
+    if requires_doctor:
+        return "⚠️ **重要提醒**：关于用药剂量的调整，必须咨询主治医生。自行调整用药剂量可能导致治疗效果不佳或产生不良反应。请务必遵医嘱服药，如有疑问请及时联系医生。"
+    
+    if scenario == "medication_consultation":
+        med_info = _extract_medication_info(f"{symptoms} {diagnosis}")
+        
+        if med_info["frequency"]:
+            return f"""根据您的描述，您提到关于用药频率的问题。
+
+**重要原则**：用药频率是医生根据药物特性、病情严重程度和个体差异精心制定的，不应自行更改。
+
+**建议**：
+1. 严格按医嘱服药：一天{med_info["frequency"]}次，保持规律
+2. 如有不适或疑问，及时联系医生或药师
+3. 不要因为症状减轻而自行减量或停药
+4. 完成整个疗程，确保彻底康复
+
+**提醒**：任何用药调整都需医生评估，请勿自行决定。"""
+        
+        return """关于用药问题，请遵循以下原则：
+
+1. **遵医嘱服药**：严格按照医生开具的处方用药
+2. **按时按量**：不要随意更改服药时间和剂量
+3. **完成疗程**：即使症状好转，也应完成整个治疗周期
+4. **及时沟通**：如有不适或疑问，及时联系医生
+
+用药安全至关重要，请勿自行调整用药方案。"""
+    
+    elif scenario == "recovery_advice":
+        # 根据常见症状提供个性化建议
+        advice_parts = []
+        
+        if any(symptom in symptoms for symptom in ["发烧", "发热", "高热"]):
+            advice_parts.append("• **体温管理**：注意监测体温，适当物理降温，避免过度捂汗")
+        
+        if any(symptom in symptoms for symptom in ["咳嗽", "咳痰", "喉咙痛"]):
+            advice_parts.append("• **呼吸道护理**：保持室内空气流通，多喝温水，避免刺激性气体")
+        
+        if any(symptom in symptoms for symptom in ["腹泻", "腹痛", "消化不良"]):
+            advice_parts.append("• **消化道调理**：饮食清淡易消化，注意补充水分和电解质")
+        
+        if any(symptom in symptoms for symptom in ["头痛", "头晕", "乏力"]):
+            advice_parts.append("• **休息恢复**：保证充足睡眠，避免劳累，适当休息")
+        
+        # 基础建议
+        base_advice = [
+            "• **充分休息**：保证每天7-8小时睡眠，避免过度劳累",
+            "• **合理饮食**：营养均衡，多摄入蛋白质和维生素",
+            "• **适度活动**：根据体力状况进行轻度活动，促进恢复",
+            "• **遵医嘱**：按时服药，定期复查",
+            "• **观察症状**：注意症状变化，如有加重及时就医"
+        ]
+        
+        all_advice = advice_parts + base_advice
+        
+        return f"""根据您的诊断情况，以下是个性化的疗养建议：
+
+{chr(10).join(all_advice)}
+
+**重要提醒**：
+1. 每个人的恢复情况不同，请根据自身感受调整
+2. 如出现新症状或原有症状加重，请及时就医
+3. 保持良好心态，积极面对康复过程
+
+祝您早日康复！"""
+    
+    elif scenario == "symptom_interpretation":
+        return f"""根据您的症状描述和诊断结果：
+
+**症状分析**：{symptoms}
+
+**诊断说明**：{diagnosis}
+
+**理解建议**：
+1. 诊断结果反映了您当前的健康状况
+2. 症状是身体发出的信号，需要认真对待
+3. 严格按照医生的治疗方案执行
+4. 如有不理解的地方，可以再次咨询医生
+
+**注意事项**：
+• 不要自行诊断或使用偏方
+• 定期复查，跟踪恢复进展
+• 保持与医生的良好沟通"""
+    
+    else:  # general_advice
+        return f"""感谢您的咨询。根据您提供的信息：
+
+**症状**：{symptoms}
+**诊断**：{diagnosis}
+
+**一般性建议**：
+1. 严格遵循医生的治疗方案
+2. 注意休息，避免劳累
+3. 保持均衡饮食，多喝水
+4. 观察身体反应，及时反馈给医生
+5. 如有紧急情况，立即就医
+
+**重要原则**：健康问题请以专业医生意见为准，本建议仅供参考。"""
 
 
-__all__ = ["generate_patient_advice"]
+async def get_medical_response_online(symptoms: str, diagnosis: str) -> Optional[MedicalResponse]:
+    """使用在线模型获取医疗回复"""
+    try:
+        client = get_online_client()
+        
+        prompt = f"""你是专业的医疗助手，请根据患者的症状和诊断结果，提供个性化、简洁易读的医疗建议。
+
+患者症状：{symptoms}
+医生诊断：{diagnosis}
+
+要求：
+1. 回复要严谨准确，避免给出可能有害的建议
+2. 语言简洁明了，用通俗易懂的中文
+3. 如果涉及用药调整，必须强调"咨询医生"的重要性
+4. 回复长度控制在200字以内
+5. 直接给出建议，不要使用JSON格式
+
+请生成回复："""
+        
+        response = await client.chat.completions.create(
+            model=general.ONLINE_CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,  # 降低随机性，提高准确性
+            max_tokens=400,
+        )
+
+        content = response.choices[0].message.content or ""
+        
+        # 识别场景
+        scenario, requires_doctor = _identify_scenario(symptoms, diagnosis)
+        
+        return MedicalResponse(
+            response=content.strip(),
+            scenario=scenario,
+            requires_doctor_consultation=requires_doctor
+        )
+            
+    except Exception:
+        return None
+
+
+def get_medical_response_offline(symptoms: str, diagnosis: str) -> MedicalResponse:
+    """离线模式：基于模板生成回复"""
+    scenario, requires_doctor = _identify_scenario(symptoms, diagnosis)
+    response = _generate_template_response(scenario, symptoms, diagnosis, requires_doctor)
+    
+    return MedicalResponse(
+        response=response,
+        scenario=scenario,
+        requires_doctor_consultation=requires_doctor
+    )
+
+
+async def get_medical_response(symptoms: str, diagnosis: str, online_model: bool = False) -> Optional[MedicalResponse]:
+    """主接口：获取医疗回复（默认使用离线模式以优化性能）"""
+    if online_model:
+        return await get_medical_response_online(symptoms, diagnosis)
+    else:
+        return get_medical_response_offline(symptoms, diagnosis)
+
+
+__all__ = [
+    "MedicalResponse",
+    "get_medical_response",
+    "get_medical_response_online",
+    "get_medical_response_offline"
+]

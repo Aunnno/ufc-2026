@@ -35,6 +35,16 @@ ONLINE_REASONING_MODEL: ONLINE_MODEL_TYPES = "deepseek-reasoner"
 
 ONLINE_MODEL_HOST = "https://api.deepseek.com/v1"
 
+# === 视觉模型 ===
+
+VISION_MODEL_DIR = BACKEND_ROOT_DIR / "model"
+BLACK_BOX_SEGMENTATION_MODEL_PATH = VISION_MODEL_DIR / "deeplabv3_mnv2_pascal_quant.tflite"
+
 # ========== 图配置 ============
 
 MAP_PATH = BACKEND_ROOT_DIR / "assets" / "newest.map.json"
+
+# ========== 数据库配置 ============
+
+USER_DATABASE_PATH = BACKEND_ROOT_DIR / "user_data.db"
+FACE_IMAGE_PATH = BACKEND_ROOT_DIR / "assets" / "face.jpg"

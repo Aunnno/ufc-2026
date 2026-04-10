@@ -23,11 +23,9 @@ source venv/bin/activate  # Activate virtual environment
 
 # Run FastAPI server with auto-reload
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Offline LLM models are preloaded at startup (no separate server needed)
 ```
 
-**Note**: The offline chat model is loaded directly into memory at server startup via `offline.get_offline_chat_model()`. There is no separate llama.cpp server; all inference happens within the FastAPI process.
+**Note**: The offline chat model is loaded directly into memory at server startup via `offline.get_offline_chat_model()`. There is no separate llama.cpp server — all inference happens within the FastAPI process.
 
 ### Frontend Development
 ```bash
@@ -49,7 +47,7 @@ npm run preview  # Preview production build
   - Reasoning model: `Qwen3-4B-Thinking-2507-Q4_K_M.gguf`
 - **Voice interaction models**: Sherpa-onnx models go in `backend/src/voice_interaction/models/`. The `install_deps.sh` script can extract from tar archives.
 - **Face recognition assets**: `backend/assets/face/face.jpg` is used for face recognition (note: .jpg not .png).
-- **Map data**: `backend/assets/newest.map.json` contains navigation graph data (updated from small1.map.json).
+- **Map data**: `backend/assets/newest.map.json` contains navigation graph data.
 
 ### Deployment
 - **Nginx configuration**: See `nginx.gcp.conf` for GCP deployment. Static files are served from `frontend/dist/` after building.
@@ -66,22 +64,29 @@ ufc-2026/
 │   │   ├── config/          # Configuration constants (general.py)
 │   │   ├── router/          # API routes (APIRouter pattern)
 │   │   ├── smart_triager/   # Multi-agent workflow for route patching
+│   │   │   ├── triager/      # condition_collector, requirement_collector, route_patcher, clinic_selector
+│   │   │   └── car/          # Car-related agents and typedefs
 │   │   ├── llm/             # Online/offline LLM clients
 │   │   ├── map/             # Navigation with Dijkstra pathfinding
 │   │   ├── recorder/        # Face recognition and medical records
-│   │   ├── voice_interaction/ # Voice interaction models and utilities
+│   │   ├── voice_interaction/ # Speech-to-text (Sherpa-onnx) and text-to-speech (MeloTTS)
+│   │   ├── medical/         # Medical advice agent
+│   │   ├── user/            # User database and typedefs
+│   │   ├── vision/          # Black box segmentation, OCR, destination verification
 │   │   ├── test/            # Ad-hoc test scripts (no formal test framework)
-│   │   └── utils/           # Shared utilities
+│   │   └── utils/           # Shared utilities (remove_os_environ_proxies, build_logit_bias)
 │   ├── assets/              # Static assets (maps, face images)
 │   └── docs/                # Design documentation
 └── frontend/         # Vue 3 SPA with Vuetify 3 and Tailwind CSS v4
     ├── src/
-    │   ├── views/           # Page-level components (HomeView, SettingsView)
+    │   ├── views/           # Page-level components (HomeView, SettingsView, MedicalView, NavigationView)
     │   ├── components/      # Reusable components
     │   │   ├── message-bubbles/  # Four-layer message bubble architecture
-    │   │   └── settings/         # Settings page components
-    │   ├── composables/     # useLongPress, useViewportOverflow
-    │   ├── stores/          # Pinia stores (currently empty)
+    │   │   ├── settings/         # Settings page components
+    │   │   └── map/              # Map visualization components
+    │   ├── composables/     # useLongPress, useViewportOverflow, useCamera, useVoiceRecorder
+    │   ├── stores/          # Pinia stores (api, workflow, index)
+    │   ├── utils/           # textToSpeech, streaming, route, mapHighlights
     │   └── router/          # Vue Router with lazy loading
     └── docs/                # UI design system and solved issues
 ```
@@ -99,7 +104,7 @@ ufc-2026/
   6. `__all__` export
 - **Pydantic Everywhere**: Request bodies, response data, LLM output schemas, and map structures all use Pydantic models
 - **LLM Clients**: Online uses DeepSeek via OpenAI-compatible client (`llm/online/client.py`); offline uses llama-cpp-python (`llm/offline/`) loaded directly into memory (no separate server)
-- **Medical Advice Agent**: Recently added medical advice agent (see commit `50d548c`)
+- **Medical Advice Agent**: Medical-specific agent in `src/medical/agent.py`
 
 ### Frontend Architecture
 - **Fixed Aspect Container Pattern**: All page-level components must use `FixedAspectContainer` component
@@ -110,14 +115,13 @@ ufc-2026/
 - **Composables Pattern**: `useLongPress` (250ms threshold) and `useViewportOverflow` (viewport adaptation)
 - **Custom Shadow System**: Enhanced Material Design 3 effects with custom shadow values
 - **Responsive Adaptation**: Smart detection of content overflow with automatic layout adjustment
-- **Tech Stack Versions**: Vue 3.5.25, Vuetify 3.12.0, Tailwind CSS v4.2.0, Vite 7.3.1, Vue Router 5.0.3
-- **Current State**: Uses mock data; backend integration pending; Pinia stores empty
+- **Tech Stack Versions**: Vue 3.5.25, Vuetify 3.12.0, Tailwind CSS v4.2.0, Vite 7.3.1, Vue Router 5.0.3, Pinia 3.0.4
 
 ### Core Data Flows
 1. **Smart Triage** (`/api/triager/get_route_patch/`): User text → `workflow.py` → Agent pipeline (condition_collector → requirement_collector → route_patcher) → patched route JSON
-2. **Face-based Medical Records** (`recorder/recoder.py`): LLM tool-calls → `IntegratedSystem` → `FaceRecognitionSystem` + `MedicalRecordSystem`
-3. **Navigation** (`map/tools.py`): `newest.map.json` loaded at module import time; Dijkstra pathfinding, tree translation for LLM consumption
-4. **Voice Interaction**: Long‑press (250ms) triggers recording; audio sent to backend for speech‑to‑text; response via text‑to‑speech.
+2. **Face-based Medical Records** (`/api/medical/`): LLM tool-calls → integrated face recognition + medical record system
+3. **Navigation** (`/api/navigation/`): `newest.map.json` loaded at module import time; Dijkstra pathfinding, tree translation for LLM consumption
+4. **Voice Interaction**: Long-press (250ms) triggers recording; audio sent to backend for speech-to-text (Sherpa-onnx); response via text-to-speech (MeloTTS)
 
 ## Key Files to Read First
 
@@ -127,7 +131,7 @@ ufc-2026/
 | `backend/docs/llm_designing.md` | Agent authoring standard, prompt structure, online/offline pattern |
 | `backend/src/config/general.py` | All path/model constants (BACKEND_ROOT_DIR, OFFLINE_CHAT_MODEL_PATH, etc.) |
 | `backend/src/smart_triager/triager/workflow.py` | Reference implementation of a multi-agent workflow |
-| `backend/src/router/triager.py` | Reference implementation of a feature router |
+| `backend/src/router/__init__.py` | Main API router mounting all sub-routers under `/api` |
 | `frontend/docs/ui_design_aesthetics.md` | Complete UI design system (v1.1.0) with visual specifications |
 | `frontend/docs/ui_design_principles.md` | Core design principles and development guidelines |
 | `frontend/docs/state_transition_system_design.md` | Four-state workflow system design with voice integration patterns |
@@ -143,20 +147,19 @@ ufc-2026/
 - **Testing**: No automated test framework. Ad-hoc scripts in `backend/src/test/` (run directly with venv active). Route testing via Postman or browser.
 - **Startup Behavior**: `main.py` preloads offline chat model on startup and calls `remove_os_environ_proxies()` to prevent local API calls from being intercepted by system proxies.
 - **LLM Concurrency**: `llama-cpp-python` doesn't support concurrent calls on same `Llama` instance. Shared instances must be called sequentially; different model instances can run concurrently.
-- **Voice Interaction**: Uses Sherpa‑onnx for speech‑to‑text and MeloTTS for text‑to‑speech; models are loaded on warm‑up.
+- **Voice Interaction**: Uses Sherpa-onnx for speech-to-text and MeloTTS for text-to-speech; models are loaded on warm-up.
 
 ### Frontend
 - **Component Structure**: Use Vuetify components for structure/interactions, Tailwind utilities for spacing/typography/layout.
-- **Store Pattern**: Setup-store style with `defineStore` and Composition API (stores currently empty).
+- **Store Pattern**: Setup-store style with `defineStore` and Composition API
 - **Layout Architecture**: `div#app` (100vw × 100vh, flex centered) → `div#main-display-block` (fixed aspect ratio container).
-- **Solved Issues**: Check `frontend/docs/solved_issues.md` for known problems and solutions (e.g., CSS animation vs. scrolling conflicts).
+- **Solved Issues**: Check `frontend/docs/solved_issues.md` for known problems and solutions (e.g., CSS animation vs. scrolling conflicts)
 
 ### Git Workflow
 - **Main branch**: `main` is the default branch for production-ready code.
 - **Feature branches**: Use `feature-*` naming convention (e.g., `feature-guide-improve`).
 - **Pull requests**: Create PRs against `main`. Include a summary of changes, test plan, and any breaking changes.
 - **Commit messages**: Follow conventional commits; describe "why" rather than "what".
-- **Recent changes**: Smart triager refactoring, face recognition updates, voice interaction async conversion, medical advice agent addition.
 
 ## Important Constraints
 
@@ -174,7 +177,7 @@ ufc-2026/
 - **Face recognition failures**: Ensure `backend/assets/face/face.jpg` exists and is a valid image.
 - **Frontend build errors**: Ensure using Node.js 18+ and npm 9+. Clean `node_modules` and reinstall if needed.
 - **LLM concurrency errors**: Do not make concurrent calls to the same llama-cpp-python `Llama` instance. Use sequential calls or separate instances.
-- **Voice interaction failures**: Check that Sherpa‑onnx and MeloTTS models are correctly placed in `backend/src/voice_interaction/models/`.
+- **Voice interaction failures**: Check that Sherpa-onnx and MeloTTS models are correctly placed in `backend/src/voice_interaction/models/`.
 
 ## Quick Reference
 
